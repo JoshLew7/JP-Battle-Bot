@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Battle Bot Controller</title>
+  </head>
+  <body>
+    <h1>Battle Bot Controller</h1>
+    <script>
+      const socket = new WebSocket("ws://192.168.4.1/ws");
+
+      socket.onopen = () => {
+        console.log("Connected to ESP32");
+      };
+
+      socket.onclose = () => {
+        console.log("Disconnected");
+      };
+
+      function sendGamepadState() {
+        const gp = navigator.getGamepads()[0];
+        if (!gp) return;
+
+        const leftY = -gp.axes[1]; // Left stick vertical
+        const rightY = -gp.axes[3]; // Right stick vertical
+        const solenoid = gp.buttons[0].pressed; // 'A' button
+
+        const data = {
+          left: Math.round(leftY * 100),
+          right: Math.round(rightY * 100),
+          solenoid: solenoid,
+        };
+
+        socket.send(JSON.stringify(data));
+      }
+
+      setInterval(sendGamepadState, 50); // Send every 50ms
+    </script>
+  </body>
+</html>
