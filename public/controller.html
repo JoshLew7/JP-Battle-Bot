@@ -16,18 +16,29 @@
         console.log("Disconnected");
       };
 
+      let solenoidState = false;
+      let prevSolenoidPressed = false;
+
       function sendGamepadState() {
         const gp = navigator.getGamepads()[0];
         if (!gp) return;
 
-        const leftY = -gp.axes[1]; // Left stick vertical
-        const rightY = -gp.axes[3]; // Right stick vertical
-        const solenoid = gp.buttons[0].pressed; // 'A' button
+        const leftY = -gp.axes[1];
+        const rightY = -gp.axes[3];
+
+        const solenoidPressed = gp.buttons[0].pressed; // A button
+
+        // Toggle solenoid on button press (rising edge)
+        if (solenoidPressed && !prevSolenoidPressed) {
+          solenoidState = !solenoidState;
+        }
+
+        prevSolenoidPressed = solenoidPressed;
 
         const data = {
           left: Math.round(leftY * 100),
           right: Math.round(rightY * 100),
-          solenoid: solenoid,
+          solenoid: solenoidState,
         };
 
         socket.send(JSON.stringify(data));
