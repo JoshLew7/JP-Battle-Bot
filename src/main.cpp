@@ -6,6 +6,10 @@
 #include <BluetoothSerial.h>
 #include "driver/twai.h"
 
+#include <Wire.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
+
 // ---------- MANUAL DEFINITIONS for TWAI compatibility ----------
 #define TWAI_IO_UNUSED     (gpio_num_t)(-1)
 #define TWAI_ALERT_NONE    0
@@ -23,6 +27,8 @@ const int solenoidPin = 23;
 
 const char* ssid = "JPBattleBot-WiFi";
 const char* password = "12345678";
+
+Adafruit_MPU6050 mpu;
 
 // ---------- Globals ----------
 AsyncWebServer server(80);
@@ -123,6 +129,20 @@ void setup() {
   // Solenoid
   pinMode(solenoidPin, OUTPUT);
   digitalWrite(solenoidPin, LOW);  // Start off
+
+  // Gyro
+  Wire.begin(21, 22);  // SDA, SCL — adjust if needed  GPIO 21 SDA | GPIO 22 SCL
+
+
+  if (!mpu.begin()) {
+    Serial.println("MPU6050 not found. Check wiring!");
+    while (1) delay(10);
+  }
+  Serial.println("✅ MPU6050 connected");
+
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
+  mpu.setFilterBandwidth(MPU6050_BAND_5_HZ);
 }
 
 // ---------- Loop ----------
@@ -156,6 +176,16 @@ void loop() {
   }
 
   digitalWrite(solenoidPin, solenoidActive ? HIGH : LOW);
+
+  sensors_event_t a, g, temp;
+  mpu.getEvent(&a, &g, &temp);
+
+  Serial.print("Gyro (deg/s): X=");
+  Serial.print(g.gyro.x);
+  Serial.print(" Y=");
+  Serial.print(g.gyro.y);
+  Serial.print(" Z=");
+  Serial.println(g.gyro.z);
 
   delay(10);
 }
