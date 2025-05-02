@@ -10,10 +10,6 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-// ---------- MANUAL DEFINITIONS for TWAI compatibility ----------
-#define TWAI_IO_UNUSED     (gpio_num_t)(-1)
-#define TWAI_ALERT_NONE    0
-
 // ---------- Config ----------
 #define USE_PWM true  // Set to false to use CAN
 
