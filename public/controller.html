@@ -2,19 +2,47 @@
 <html>
   <head>
     <title>Battle Bot Controller</title>
+    <style>
+      body {
+        font-family: sans-serif;
+        text-align: center;
+        margin-top: 40px;
+      }
+      #status {
+        font-weight: bold;
+        margin-bottom: 20px;
+      }
+      #solenoid-state {
+        font-size: 20px;
+        margin-top: 10px;
+      }
+    </style>
   </head>
   <body>
     <h1>Battle Bot Controller</h1>
+    <p id="status">🟡 Connecting...</p>
+    <p id="solenoid-state">Solenoid: OFF</p>
+
     <script>
       const socket = new WebSocket("ws://192.168.4.1/ws");
 
+      const statusEl = document.getElementById("status");
+      const solenoidEl = document.getElementById("solenoid-state");
+
       socket.onopen = () => {
         console.log("Connected to ESP32");
+        statusEl.textContent = "🟢 Connected to ESP32";
       };
 
       socket.onclose = () => {
         console.log("Disconnected");
+        statusEl.textContent = "🔴 Disconnected";
       };
+
+      window.addEventListener("gamepadconnected", (e) => {
+        console.log("Gamepad connected:", e.gamepad);
+        statusEl.textContent += " | 🎮 Gamepad Connected";
+      });
 
       let solenoidState = false;
       let prevSolenoidPressed = false;
@@ -25,12 +53,11 @@
 
         const leftY = -gp.axes[1];
         const rightY = -gp.axes[3];
-
         const solenoidPressed = gp.buttons[0].pressed; // A button
 
-        // Toggle solenoid on button press (rising edge)
         if (solenoidPressed && !prevSolenoidPressed) {
           solenoidState = !solenoidState;
+          solenoidEl.textContent = `Solenoid: ${solenoidState ? "ON" : "OFF"}`;
         }
 
         prevSolenoidPressed = solenoidPressed;
@@ -41,7 +68,9 @@
           solenoid: solenoidState,
         };
 
-        socket.send(JSON.stringify(data));
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(data));
+        }
       }
 
       setInterval(sendGamepadState, 50); // Send every 50ms

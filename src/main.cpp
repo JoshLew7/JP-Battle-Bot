@@ -3,34 +3,29 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include "driver/twai.h"
-
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
-#include <BleGamepad.h>
-
 // ---------- Config ----------
 #define USE_PWM true  // Set to false to use CAN
 
-const int pwmLeftPin = 18;
-const int pwmRightPin = 19;
+// Motor PWM pins
+const int pwmLeftPin = 12;   // GPIO 12
+const int pwmRightPin = 10;  // GPIO 10
 
-const int solenoidPin = 23;
+// Solenoid control pins
+const int solenoidPinA = 32; // GPIO 32
+const int solenoidPinB = 33; // GPIO 33
 
-#define CAN_TX_PIN GPIO_NUM_5
-#define CAN_RX_PIN GPIO_NUM_4
-
+// Wi-Fi credentials
 const char* ssid = "JPBattleBot-WiFi";
 const char* password = "12345678";
-
-Adafruit_MPU6050 mpu;
-BleGamepad bleGamepad;
 
 // ---------- Globals ----------
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+Adafruit_MPU6050 mpu;
 
 int leftMotor = 0;
 int rightMotor = 0;
@@ -69,62 +64,33 @@ void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client,
 void setup() {
   Serial.begin(115200);
 
+  // Initialize Wi-Fi
   WiFi.softAP(ssid, password);
   Serial.print("AP IP address: ");
   Serial.println(WiFi.softAPIP());
 
+  // Initialize WebSocket
   ws.onEvent(onEvent);
   server.addHandler(&ws);
   server.begin();
 
-  bleGamepad.begin();
-  Serial.println("BLE Gamepad started");
-
+  // Initialize PWM for motors
   if (USE_PWM) {
+    ledcSetup(0, 50, 16); // Channel 0, 50 Hz, 16-bit resolution
     ledcAttachPin(pwmLeftPin, 0);
-    ledcSetup(0, 1000, 8);
+
+    ledcSetup(1, 50, 16); // Channel 1, 50 Hz, 16-bit resolution
     ledcAttachPin(pwmRightPin, 1);
-    ledcSetup(1, 1000, 8);
-  } else {
-    twai_general_config_t g_config = {
-      .mode = TWAI_MODE_NORMAL,
-      .tx_io = CAN_TX_PIN,
-      .rx_io = CAN_RX_PIN,
-      .clkout_io = TWAI_IO_UNUSED,
-      .bus_off_io = TWAI_IO_UNUSED,
-      .tx_queue_len = 5,
-      .rx_queue_len = 5,
-      .alerts_enabled = TWAI_ALERT_NONE,
-      .clkout_divider = 0,
-      .intr_flags = ESP_INTR_FLAG_LEVEL1
-    };
-
-    twai_timing_config_t t_config = {
-      .brp = 4,
-      .tseg_1 = 15,
-      .tseg_2 = 4,
-      .sjw = 3,
-      .triple_sampling = false
-    };
-
-    twai_filter_config_t f_config = {
-      .acceptance_code = 0,
-      .acceptance_mask = 0xFFFFFFFF,
-      .single_filter = true
-    };
-
-    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK &&
-        twai_start() == ESP_OK) {
-      Serial.println("CAN driver started");
-    } else {
-      Serial.println("Failed to start CAN driver");
-    }
   }
 
-  pinMode(solenoidPin, OUTPUT);
-  digitalWrite(solenoidPin, LOW);
+  // Initialize solenoid control pins
+  pinMode(solenoidPinA, OUTPUT);
+  pinMode(solenoidPinB, OUTPUT);
+  digitalWrite(solenoidPinA, LOW);
+  digitalWrite(solenoidPinB, LOW);
 
-  Wire.begin(21, 22);
+  // Initialize MPU6050
+  Wire.begin();
   if (!mpu.begin()) {
     Serial.println("MPU6050 not found. Check wiring!");
     while (1) delay(10);
@@ -138,33 +104,29 @@ void setup() {
 
 // ---------- Loop ----------
 void loop() {
-  if (bleGamepad.isConnected()) {
-    // Optionally: react to BLE gamepad inputs in future
-  }
+  // Map motor values (-100 to 100) to PWM duty cycle (1000 to 2000 microseconds)
+  int leftDuty = map(leftMotor, -100, 100, 1000, 2000);
+  int rightDuty = map(rightMotor, -100, 100, 1000, 2000);
 
-  int leftValue = constrain(map(leftMotor, -100, 100, 0, 255), 0, 255);
-  int rightValue = constrain(map(rightMotor, -100, 100, 0, 255), 0, 255);
+  // Convert microseconds to duty cycle for 16-bit resolution at 50Hz
+  int leftPWM = (leftDuty * 65535) / 20000;
+  int rightPWM = (rightDuty * 65535) / 20000;
 
   if (USE_PWM) {
-    ledcWrite(0, leftValue);
-    ledcWrite(1, rightValue);
-  } else {
-    twai_message_t msgLeft = {
-      .identifier = 0x01,
-      .data_length_code = 1,
-      .data = { (uint8_t)leftValue }
-    };
-    twai_message_t msgRight = {
-      .identifier = 0x02,
-      .data_length_code = 1,
-      .data = { (uint8_t)rightValue }
-    };
-    twai_transmit(&msgLeft, pdMS_TO_TICKS(10));
-    twai_transmit(&msgRight, pdMS_TO_TICKS(10));
+    ledcWrite(0, leftPWM);
+    ledcWrite(1, rightPWM);
   }
 
-  digitalWrite(solenoidPin, solenoidActive ? HIGH : LOW);
+  // Control solenoid
+  if (solenoidActive) {
+    digitalWrite(solenoidPinA, HIGH);
+    digitalWrite(solenoidPinB, LOW);
+  } else {
+    digitalWrite(solenoidPinA, LOW);
+    digitalWrite(solenoidPinB, HIGH);
+  }
 
+  // Read MPU6050 data
   sensors_event_t a, g, temp;
   mpu.getEvent(&a, &g, &temp);
 
