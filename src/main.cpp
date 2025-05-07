@@ -3,12 +3,13 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
-#include <BluetoothSerial.h>
 #include "driver/twai.h"
 
 #include <Wire.h>
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
+
+#include <BleGamepad.h>
 
 // ---------- Config ----------
 #define USE_PWM true  // Set to false to use CAN
@@ -25,11 +26,11 @@ const char* ssid = "JPBattleBot-WiFi";
 const char* password = "12345678";
 
 Adafruit_MPU6050 mpu;
+BleGamepad bleGamepad;
 
 // ---------- Globals ----------
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
-BluetoothSerial BTSerial;
 
 int leftMotor = 0;
 int rightMotor = 0;
@@ -76,17 +77,15 @@ void setup() {
   server.addHandler(&ws);
   server.begin();
 
-  BTSerial.begin("JPBattleBot-BT");
-  Serial.println("Bluetooth started as 'JPBattleBot-BT'");
+  bleGamepad.begin();
+  Serial.println("BLE Gamepad started");
 
   if (USE_PWM) {
-    ledcAttachPin(pwmLeftPin, 0);  // channel 0 // GPIO port 18 PWM slot 1
+    ledcAttachPin(pwmLeftPin, 0);
     ledcSetup(0, 1000, 8);
-
-    ledcAttachPin(pwmRightPin, 1); // channel 1
+    ledcAttachPin(pwmRightPin, 1);
     ledcSetup(1, 1000, 8);
   } else {
-    // --- Manual TWAI config (500kbps)
     twai_general_config_t g_config = {
       .mode = TWAI_MODE_NORMAL,
       .tx_io = CAN_TX_PIN,
@@ -122,14 +121,10 @@ void setup() {
     }
   }
 
-  // Solenoid
   pinMode(solenoidPin, OUTPUT);
-  digitalWrite(solenoidPin, LOW);  // Start off
+  digitalWrite(solenoidPin, LOW);
 
-  // Gyro
-  Wire.begin(21, 22);  // SDA, SCL — adjust if needed  GPIO 21 SDA | GPIO 22 SCL
-
-
+  Wire.begin(21, 22);
   if (!mpu.begin()) {
     Serial.println("MPU6050 not found. Check wiring!");
     while (1) delay(10);
@@ -143,11 +138,8 @@ void setup() {
 
 // ---------- Loop ----------
 void loop() {
-  if (BTSerial.available()) {
-    String btInput = BTSerial.readStringUntil('\n');
-    btInput.trim();
-    Serial.println("BT Input: " + btInput);
-    applyControl(btInput);
+  if (bleGamepad.isConnected()) {
+    // Optionally: react to BLE gamepad inputs in future
   }
 
   int leftValue = constrain(map(leftMotor, -100, 100, 0, 255), 0, 255);
