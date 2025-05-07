@@ -6,15 +6,18 @@
       body {
         font-family: sans-serif;
         text-align: center;
-        margin-top: 40px;
+        margin-top: 30px;
       }
-      #status {
-        font-weight: bold;
-        margin-bottom: 20px;
+      button {
+        padding: 10px 20px;
+        font-size: 18px;
+        margin: 10px;
       }
+      #status,
       #solenoid-state {
-        font-size: 20px;
-        margin-top: 10px;
+        font-size: 18px;
+        margin: 10px;
+        font-weight: bold;
       }
     </style>
   </head>
@@ -23,11 +26,20 @@
     <p id="status">🟡 Connecting...</p>
     <p id="solenoid-state">Solenoid: OFF</p>
 
+    <div>
+      <button onclick="sendTest(-50, -50)">Drive Reverse</button>
+      <button onclick="sendTest(0, 0)">Stop</button>
+      <button onclick="sendTest(50, 50)">Drive Forward</button><br />
+      <button onclick="toggleSolenoid()">Toggle Solenoid</button>
+    </div>
+
     <script>
       const socket = new WebSocket("ws://192.168.4.1/ws");
 
       const statusEl = document.getElementById("status");
       const solenoidEl = document.getElementById("solenoid-state");
+
+      let solenoidState = false;
 
       socket.onopen = () => {
         console.log("Connected to ESP32");
@@ -39,32 +51,50 @@
         statusEl.textContent = "🔴 Disconnected";
       };
 
-      window.addEventListener("gamepadconnected", (e) => {
-        console.log("Gamepad connected:", e.gamepad);
-        statusEl.textContent += " | 🎮 Gamepad Connected";
+      // Keyboard fallback
+      const keys = { w: false, s: false, ArrowUp: false, ArrowDown: false };
+      let prevSolenoidKey = false;
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key in keys) keys[e.key] = true;
+        if (e.code === "Space" && !prevSolenoidKey) toggleSolenoid();
+        prevSolenoidKey = e.code === "Space";
       });
 
-      let solenoidState = false;
-      let prevSolenoidPressed = false;
+      window.addEventListener("keyup", (e) => {
+        if (e.key in keys) keys[e.key] = false;
+        if (e.code === "Space") prevSolenoidKey = false;
+      });
 
-      function sendGamepadState() {
-        const gp = navigator.getGamepads()[0];
-        if (!gp) return;
+      function toggleSolenoid() {
+        solenoidState = !solenoidState;
+        solenoidEl.textContent = `Solenoid: ${solenoidState ? "ON" : "OFF"}`;
+      }
 
-        const leftY = -gp.axes[1];
-        const rightY = -gp.axes[3];
-        const solenoidPressed = gp.buttons[0].pressed; // A button
-
-        if (solenoidPressed && !prevSolenoidPressed) {
-          solenoidState = !solenoidState;
-          solenoidEl.textContent = `Solenoid: ${solenoidState ? "ON" : "OFF"}`;
+      function sendTest(left, right) {
+        const data = {
+          left,
+          right,
+          solenoid: solenoidState,
+        };
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(data));
         }
+      }
 
-        prevSolenoidPressed = solenoidPressed;
+      function sendState() {
+        let left = 0;
+        let right = 0;
+
+        if (keys.w) left = 50;
+        if (keys.s) left = -50;
+
+        if (keys.ArrowUp) right = 50;
+        if (keys.ArrowDown) right = -50;
 
         const data = {
-          left: Math.round(leftY * 100),
-          right: Math.round(rightY * 100),
+          left,
+          right,
           solenoid: solenoidState,
         };
 
@@ -73,7 +103,7 @@
         }
       }
 
-      setInterval(sendGamepadState, 50); // Send every 50ms
+      setInterval(sendState, 50);
     </script>
   </body>
 </html>
